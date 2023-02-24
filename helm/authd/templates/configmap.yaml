@@ -1,0 +1,26 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+    name: authd-env
+data:
+    config_path: "/etc/authd/config.yaml"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+    name: authd-conf
+data:
+    config.yaml: |
+        ---
+        kind: json
+        http:
+            address: 0.0.0.0
+            port: {{ .Values.service.port }}
+        json:
+            path: /etc/authd/auth.json
+    auth.json: |
+        {
+            "brvy": "$2a$10$Db18By8dJCDKS5/ECVgMueMxQRSHyeP.NPbJ1xqlwW.Z3NTEjhveq"
+        }
+
