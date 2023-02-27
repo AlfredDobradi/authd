@@ -44,15 +44,17 @@ func main() {
 	sigchan := make(chan os.Signal, 1)
 	signal.Notify(sigchan, os.Interrupt)
 
-	shutdown, err := initProvider()
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer func() {
-		if err := shutdown(context.Background()); err != nil {
-			log.Fatal("failed to shutdown TracerProvider: %w", err)
+	if cfg.Instrumentation.Enabled {
+		shutdown, err := initProvider(cfg.Instrumentation)
+		if err != nil {
+			log.Fatal(err)
 		}
-	}()
+		defer func() {
+			if err := shutdown(context.Background()); err != nil {
+				log.Fatal("failed to shutdown TracerProvider: %w", err)
+			}
+		}()
+	}
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -128,7 +130,10 @@ func main() {
 
 // Initializes an OTLP exporter, and configures the corresponding trace and
 // metric providers.
-func initProvider() (func(context.Context) error, error) {
+func initProvider(cfg config.InstrumentationConfig) (func(context.Context) error, error) {
+	if cfg.Endpoint != "" {
+		return nil, fmt.Errorf("The endpoint can't be empty if instrumentation is enabled")
+	}
 	ctx := context.Background()
 
 	res, err := resource.New(ctx,
@@ -148,7 +153,7 @@ func initProvider() (func(context.Context) error, error) {
 	// probably connect directly to the service through dns.
 	ctx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
-	conn, err := grpc.DialContext(ctx, "127.0.0.1:4317",
+	conn, err := grpc.DialContext(ctx, cfg.Endpoint,
 		// Note the use of insecure transport here. TLS is recommended in production.
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithBlock(),
