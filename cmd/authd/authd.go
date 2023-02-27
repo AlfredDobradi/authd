@@ -1,15 +1,14 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
+	"context"
+	"log"
 	"net/http"
 	"os"
+	"os/signal"
 
-	jsonAuth "github.com/alfreddobradi/authd/backend/json"
 	"github.com/alfreddobradi/authd/config"
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
+	"github.com/alfreddobradi/authd/instrumentation"
 )
 
 const Realm string = "authd realm"
@@ -29,50 +28,33 @@ func main() {
 		panic(err)
 	}
 
-	r := chi.NewRouter()
-	r.Use(middleware.RequestID)
-	r.Use(middleware.Logger)
+	sigchan := make(chan os.Signal, 1)
+	signal.Notify(sigchan, os.Interrupt)
 
-	jsonAuth.SetFromConfig(cfg.JSON)
-	jsonAuth, err := jsonAuth.Build()
+	if cfg.Instrumentation.Enabled {
+		if err := instrumentation.Provider(cfg.Instrumentation); err != nil {
+			log.Fatal(err)
+		}
+		defer func() {
+			if err := instrumentation.Shutdown(context.Background()); err != nil {
+				log.Fatal("failed to shutdown TracerProvider: %w", err)
+			}
+		}()
+	}
+
+	s, err := buildServer(cfg)
 	if err != nil {
-		panic(err)
+		log.Fatalf("Failed to create HTTP server: %v", err)
 	}
 
-	r.Get("/auth", func(w http.ResponseWriter, r *http.Request) {
-		user, err := jsonAuth.BasicAuth(r)
-		if err != nil {
-			w.Header().Set("WWW-Authenticate", fmt.Sprintf(`Basic realm="%s"`, Realm))
-			w.WriteHeader(http.StatusUnauthorized)
-			return
+	go func() {
+		if err := s.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("HTTP server error: %v", err)
 		}
+	}()
 
-		w.Header().Set("Content-Type", "application/json")
-		response := OkResponse{
-			User:          user,
-			Authenticated: true,
-		}
-		encoder := json.NewEncoder(w)
-		encoder.Encode(response) // nolint
-	})
-
-	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("OK"))
-	})
-
-	address := "127.0.0.1"
-	if cfg.HTTP.Address != "" {
-		address = cfg.HTTP.Address
-	}
-
-	port := "80"
-	if cfg.HTTP.Port != "" {
-		port = cfg.HTTP.Port
-	}
-	bind := fmt.Sprintf("%s:%s", address, port)
-	fmt.Printf("Listening on %s\n", bind)
-
-	if err := http.ListenAndServe(bind, r); err != nil && err != http.ErrServerClosed {
-		fmt.Printf("HTTP server error: %v\n", err)
+	<-sigchan
+	if err := s.Shutdown(context.Background()); err != nil {
+		log.Printf("Received error while shutting down http server: %s", err)
 	}
 }

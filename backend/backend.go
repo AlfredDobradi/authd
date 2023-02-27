@@ -1,7 +1,10 @@
 package backend
 
-import "net/http"
+import (
+	"context"
+	"net/http"
+)
 
 type BasicAuthenticator interface {
-	BasicAuth(r *http.Request) (string, error)
+	BasicAuth(ctx context.Context, r *http.Request) (string, error)
 }
