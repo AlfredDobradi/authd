@@ -7,9 +7,10 @@ import (
 )
 
 type Config struct {
-	Type string     `yaml:"kind"`
-	HTTP HTTPConfig `yaml:"http"`
-	JSON JsonConfig `yaml:"json"`
+	Type            string                `yaml:"kind"`
+	HTTP            HTTPConfig            `yaml:"http"`
+	JSON            JsonConfig            `yaml:"json"`
+	Instrumentation InstrumentationConfig `yaml:"instrumentation"`
 }
 
 type JsonConfig struct {
@@ -19,6 +20,11 @@ type JsonConfig struct {
 type HTTPConfig struct {
 	Address string `yaml:"address"`
 	Port    string `yaml:"port"`
+}
+
+type InstrumentationConfig struct {
+	Enabled  bool   `yaml:"enabled"`
+	Endpoint string `yaml:"endpoint"`
 }
 
 func Load(path string) (*Config, error) {

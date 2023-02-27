@@ -1,11 +1,13 @@
 package json
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 
+	"go.opentelemetry.io/otel"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -28,18 +30,25 @@ func Build() (*JsonAuthenticator, error) {
 	return &JsonAuthenticator{entries: entries}, nil
 }
 
-func (j *JsonAuthenticator) BasicAuth(r *http.Request) (string, error) {
+func (j *JsonAuthenticator) BasicAuth(ctx context.Context, r *http.Request) (string, error) {
+	_, span := otel.Tracer("auth").Start(ctx, "json")
+	defer span.End()
 	u, p, ok := r.BasicAuth()
 	if !ok {
-		return "", fmt.Errorf("no auth data")
+		err := fmt.Errorf("no auth data")
+		span.RecordError(err)
+		return "", err
 	}
 
 	hash, ok := j.entries[u]
 	if !ok {
-		return "", fmt.Errorf("user not found")
+		err := fmt.Errorf("user not found")
+		span.RecordError(err)
+		return "", err
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(p)); err != nil {
+		span.RecordError(err)
 		return "", fmt.Errorf("bcrypt: %w", err)
 	}
 
